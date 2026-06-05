@@ -1,11 +1,11 @@
 import Tilt from "react-parallax-tilt";
 import { Reveal } from "@/components/fx/Reveal";
-import { Building2, Building, Bridge, Sofa, ClipboardList, Cpu } from "lucide-react";
+import { Building2, Building, Waypoints, Sofa, ClipboardList, Cpu } from "lucide-react";
 
 const services = [
   { icon: Building2, t: "Residential Construction", d: "Bespoke towers and gated estates designed for lifetime value." },
   { icon: Building, t: "Commercial Projects", d: "Headquarters, mixed-use districts and retail destinations." },
-  { icon: Bridge, t: "Infrastructure", d: "Bridges, transit hubs and civic works built to last centuries." },
+  { icon: Waypoints, t: "Infrastructure", d: "Bridges, transit hubs and civic works built to last centuries." },
   { icon: Sofa, t: "Interior Design", d: "Material-led interiors with bespoke lighting and acoustics." },
   { icon: ClipboardList, t: "Project Management", d: "End-to-end delivery with transparent reporting and KPIs." },
   { icon: Cpu, t: "Smart Buildings", d: "IoT, energy automation and AI-driven facility intelligence." },
