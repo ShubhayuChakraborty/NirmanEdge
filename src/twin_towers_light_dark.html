@@ -1,0 +1,412 @@
+
+<style>
+#twrap { position: relative; width: 100%; aspect-ratio: 9/16; overflow: hidden; background: #060810; transition: background 0.6s; }
+#twrap.light { background: #b8cfe8; }
+#tcanvas { display: block; width: 100% !important; height: 100% !important; }
+#tinfo { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #556; letter-spacing: 0.09em; pointer-events: none; white-space: nowrap; font-family: monospace; }
+#twrap.light #tinfo { color: #778; }
+#tmodeBtn {
+  position: absolute; top: 12px; right: 12px;
+  background: rgba(255,255,255,0.13); border: 0.5px solid rgba(255,255,255,0.25);
+  color: #dde; font-size: 12px; font-family: monospace; letter-spacing: 0.06em;
+  padding: 5px 12px; border-radius: 20px; cursor: pointer; z-index: 10;
+  backdrop-filter: blur(4px); transition: background 0.3s, color 0.3s;
+  display: flex; align-items: center; gap: 6px;
+}
+#twrap.light #tmodeBtn { background: rgba(0,0,0,0.12); border-color: rgba(0,0,0,0.2); color: #334; }
+</style>
+
+<div id="twrap">
+  <canvas id="tcanvas"></canvas>
+  <div id="tinfo">DRAG TO ORBIT · SCROLL TO ZOOM</div>
+  <button id="tmodeBtn">☀ LIGHT</button>
+</div>
+
+<script src="/three.min.js"></script>
+<script>
+const wrap = document.getElementById('twrap');
+const canvas = document.getElementById('tcanvas');
+const btn = document.getElementById('tmodeBtn');
+let isLight = false;
+
+function getSize(){ return { w: wrap.clientWidth, h: wrap.clientHeight }; }
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+const scene = new THREE.Scene();
+const { w, h } = getSize();
+renderer.setSize(w, h);
+const camera = new THREE.PerspectiveCamera(42, w/h, 0.1, 600);
+
+// Sky sphere
+const skyGeo = new THREE.SphereGeometry(280, 16, 8);
+skyGeo.scale(-1,1,1);
+const skyColors = [];
+const skyPos = skyGeo.attributes.position;
+for(let i=0;i<skyPos.count;i++){
+  const y = skyPos.getY(i);
+  const t = Math.max(0, Math.min(1, (y+50)/300));
+  skyColors.push(0.02+t*0.04, 0.04+t*0.08, 0.12+t*0.18);
+}
+skyGeo.setAttribute('color', new THREE.Float32BufferAttribute(skyColors,3));
+const skyMesh = new THREE.Mesh(skyGeo, new THREE.MeshBasicMaterial({vertexColors:true}));
+scene.add(skyMesh);
+
+// Light sky colors
+const skyColorsLight = [];
+for(let i=0;i<skyPos.count;i++){
+  const y = skyPos.getY(i);
+  const t = Math.max(0, Math.min(1, (y+50)/300));
+  skyColorsLight.push(0.55+t*0.3, 0.72+t*0.2, 0.9+t*0.1);
+}
+const skyCAttrDark = new THREE.Float32BufferAttribute(skyColors,3);
+const skyCAttrLight = new THREE.Float32BufferAttribute(skyColorsLight,3);
+
+// Stars
+const starGeo = new THREE.BufferGeometry();
+const starV = [];
+for(let i=0;i<1200;i++){
+  const theta=Math.random()*Math.PI*2, phi=Math.random()*Math.PI*0.5;
+  const r=260;
+  starV.push(r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi)+40, r*Math.sin(phi)*Math.sin(theta));
+}
+starGeo.setAttribute('position', new THREE.Float32BufferAttribute(starV,3));
+const starMesh = new THREE.Points(starGeo, new THREE.PointsMaterial({color:0xffffff,size:0.7,sizeAttenuation:true}));
+scene.add(starMesh);
+
+// Sun / Moon
+const moonMat = new THREE.MeshBasicMaterial({color:0xfff8e0});
+const sunMat = new THREE.MeshBasicMaterial({color:0xffe070});
+const moon = new THREE.Mesh(new THREE.SphereGeometry(4,16,16), moonMat);
+moon.position.set(80,120,-180);
+scene.add(moon);
+
+// Lights
+const ambLight = new THREE.AmbientLight(0x0a1030, 0.8);
+scene.add(ambLight);
+const moonLight = new THREE.DirectionalLight(0x8899cc, 0.4);
+moonLight.position.set(80,120,-180);
+scene.add(moonLight);
+const hemiLight = new THREE.HemisphereLight(0x112244, 0x001122, 0.5);
+scene.add(hemiLight);
+
+const fog = new THREE.FogExp2(0x060810, 0.007);
+const fogLight = new THREE.FogExp2(0xaec8e0, 0.005);
+scene.fog = fog;
+
+function ptLight(color, intensity, x, y, z){
+  const l = new THREE.PointLight(color, intensity, 25);
+  l.position.set(x,y,z); scene.add(l); return l;
+}
+const pl1 = ptLight(0xff8833,1.2,-11,5,-12); const pl2 = ptLight(0xff8833,1.2,11,5,-12);
+const pl3 = ptLight(0xff8833,1.0,-11,5,12);  const pl4 = ptLight(0xff8833,1.0,11,5,12);
+const pl5 = ptLight(0x4488ff,0.8,0,3,0);
+const pl6 = ptLight(0x6644ff,0.6,0,68,0);
+
+// Materials (dark)
+const concrete    = new THREE.MeshLambertMaterial({color:0x1a1e28});
+const cladding    = new THREE.MeshLambertMaterial({color:0x1e2230});
+const claddingB   = new THREE.MeshLambertMaterial({color:0x16192a});
+const glassLit    = new THREE.MeshLambertMaterial({color:0xffdd88,emissive:0xcc9900,emissiveIntensity:0.35,transparent:true,opacity:0.92});
+const glassOff    = new THREE.MeshLambertMaterial({color:0x1a3355,transparent:true,opacity:0.88});
+const glassDim    = new THREE.MeshLambertMaterial({color:0x223355,transparent:true,opacity:0.85});
+
+// Materials (light)
+const concreteLt  = new THREE.MeshLambertMaterial({color:0xc8cdd8});
+const claddingLt  = new THREE.MeshLambertMaterial({color:0xd4d8e8});
+const claddingBLt = new THREE.MeshLambertMaterial({color:0xbdc2d2});
+const glassLitLt  = new THREE.MeshLambertMaterial({color:0x88ccff,emissive:0x3399ff,emissiveIntensity:0.08,transparent:true,opacity:0.7});
+const glassOffLt  = new THREE.MeshLambertMaterial({color:0x9ab8d8,transparent:true,opacity:0.75});
+const glassDimLt  = new THREE.MeshLambertMaterial({color:0xa8c4e0,transparent:true,opacity:0.72});
+
+const metal     = new THREE.MeshLambertMaterial({color:0x303848});
+const dark      = new THREE.MeshLambertMaterial({color:0x0c0e14});
+const roofM     = new THREE.MeshLambertMaterial({color:0x181c24});
+const groundM   = new THREE.MeshLambertMaterial({color:0x10131c});
+const plazaM    = new THREE.MeshLambertMaterial({color:0x14171f});
+const roadM     = new THREE.MeshLambertMaterial({color:0x0e1018});
+const greenM    = new THREE.MeshLambertMaterial({color:0x0d1a0a});
+const accentM   = new THREE.MeshLambertMaterial({color:0x888888});
+const spireGlow = new THREE.MeshLambertMaterial({color:0xff2200,emissive:0xff2200,emissiveIntensity:1.2});
+const spireGlowLt = new THREE.MeshLambertMaterial({color:0xff4400,emissive:0xff4400,emissiveIntensity:0.5});
+const bridgeGlow= new THREE.MeshLambertMaterial({color:0x44aaff,emissive:0x2266ff,emissiveIntensity:0.6,transparent:true,opacity:0.9});
+const bridgeGlowLt= new THREE.MeshLambertMaterial({color:0x3388cc,emissive:0x1155aa,emissiveIntensity:0.15,transparent:true,opacity:0.9});
+const fountainM = new THREE.MeshLambertMaterial({color:0x2244aa,emissive:0x1133aa,emissiveIntensity:0.4,transparent:true,opacity:0.85});
+const dashM     = new THREE.MeshBasicMaterial({color:0x334455});
+
+// Light mode ground materials
+const groundMLt  = new THREE.MeshLambertMaterial({color:0x8899aa});
+const plazaMLt   = new THREE.MeshLambertMaterial({color:0x99aabb});
+const roadMLt    = new THREE.MeshLambertMaterial({color:0x778899});
+const greenMLt   = new THREE.MeshLambertMaterial({color:0x4a7a3a});
+const metalLt    = new THREE.MeshLambertMaterial({color:0x9090a0});
+const roofMLt    = new THREE.MeshLambertMaterial({color:0xb0b8c8});
+const darkLt     = new THREE.MeshLambertMaterial({color:0x8090a0});
+const dashMLt    = new THREE.MeshBasicMaterial({color:0xaabbcc});
+
+const matMap = {};
+function tracked(m, key){ matMap[key]=m; return m; }
+
+function box(W,H,D,mat,x,y,z,ry){
+  const m=new THREE.Mesh(new THREE.BoxGeometry(W,H,D),mat);
+  m.position.set(x,y,z);
+  if(ry) m.rotation.y=ry;
+  m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); return m;
+}
+function cyl(rt,rb,H,seg,mat,x,y,z){
+  const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,H,seg),mat);
+  m.position.set(x,y,z);
+  m.castShadow=true; m.receiveShadow=true;
+  scene.add(m); return m;
+}
+
+// Track meshes for material swapping
+const groundMeshes = [];
+const towerDarkMats = [];
+const towerLightMats = [];
+
+function trackBox(W,H,D,dMat,lMat,x,y,z,ry){
+  const m = box(W,H,D,dMat,x,y,z,ry);
+  groundMeshes.push({m,d:dMat,l:lMat}); return m;
+}
+function trackCyl(rt,rb,H,seg,dMat,lMat,x,y,z){
+  const m = cyl(rt,rb,H,seg,dMat,x,y,z);
+  groundMeshes.push({m,d:dMat,l:lMat}); return m;
+}
+
+// Ground
+trackBox(120,0.3,120,groundM,groundMLt,0,-0.15,0);
+trackBox(22,0.12,30,plazaM,plazaMLt,0,0.06,0);
+trackBox(120,0.05,9,roadM,roadMLt,0,-0.1,0);
+trackBox(9,0.05,120,roadM,roadMLt,0,-0.1,0);
+for(let z=-50;z<50;z+=6) trackBox(0.2,0.01,3,dashM,dashMLt,0,0,z);
+for(let x=-50;x<50;x+=6) trackBox(3,0.01,0.2,dashM,dashMLt,x,0,0);
+trackBox(8,0.1,120,greenM,greenMLt,-20,-0.1,0);
+trackBox(8,0.1,120,greenM,greenMLt,20,-0.1,0);
+
+function tree(x,z){
+  trackCyl(0,0.13,0.8,6,dark,darkLt,x,0.4,z);
+  trackCyl(0.9,0.7,1.4,7,greenM,greenMLt,x,1.7,z);
+  trackCyl(0.65,0.35,1.2,7,greenM,greenMLt,x,2.7,z);
+  trackCyl(0.35,0.05,0.9,7,greenM,greenMLt,x,3.5,z);
+}
+for(let i=-4;i<=4;i++){ tree(-20,i*7); tree(20,i*7); }
+
+function lamp(x,z){
+  trackCyl(0.07,0.07,4.5,8,metal,metalLt,x,2.25,z);
+  trackCyl(0.06,0.06,1.6,8,metal,metalLt,x+0.8,4.3,z);
+  const g=new THREE.Mesh(new THREE.SphereGeometry(0.25,8,8),new THREE.MeshBasicMaterial({color:0xfffde0}));
+  g.position.set(x+0.8,5.2,z); scene.add(g);
+  const pl=new THREE.PointLight(0xff9933,1.5,12);
+  pl.position.set(x+0.8,5.1,z); scene.add(pl);
+  groundMeshes.push({m:g,d:new THREE.MeshBasicMaterial({color:0xfffde0}),l:new THREE.MeshBasicMaterial({color:0xffe8a0})});
+}
+[-12,-4,4,12].forEach(z=>{ lamp(-11,z); lamp(11,z); });
+
+trackBox(2,0.5,0.7,plazaM,plazaMLt,-5,0.25,-8);
+trackBox(2,0.5,0.7,plazaM,plazaMLt,-5,0.25,-3);
+trackBox(2,0.5,0.7,plazaM,plazaMLt,-5,0.25,3);
+trackBox(2,0.5,0.7,plazaM,plazaMLt,-5,0.25,8);
+trackBox(2,0.5,0.7,plazaM,plazaMLt,5,0.25,-8);
+trackBox(2,0.5,0.7,plazaM,plazaMLt,5,0.25,-3);
+trackBox(2,0.5,0.7,plazaM,plazaMLt,5,0.25,3);
+trackBox(2,0.5,0.7,plazaM,plazaMLt,5,0.25,8);
+trackCyl(2.2,2.2,0.35,24,plazaM,plazaMLt,0,0.17,0);
+trackCyl(0.5,0.5,1.0,16,accentM,accentM,0,0.8,0);
+trackCyl(1.2,1.2,0.12,20,fountainM,fountainM,0,1.36,0);
+
+const spireObjs=[];
+const bridgeGlowObjs=[];
+
+function buildTower(tx){
+  const TH=52, W1=7.5, D1=7.5, W2=5.3, D2=5.3;
+  trackBox(W1+2,3,D1+2,concrete,concreteLt,tx,1.5,0);
+  const baseB = box(W1,TH,D1,cladding,tx,TH/2+3,0);
+  groundMeshes.push({m:baseB,d:cladding,l:claddingLt});
+  const diagBox=new THREE.Mesh(new THREE.BoxGeometry(W2,TH,D2),claddingB);
+  diagBox.position.set(tx,TH/2+3,0); diagBox.rotation.y=Math.PI/4;
+  diagBox.castShadow=true; scene.add(diagBox);
+  groundMeshes.push({m:diagBox,d:claddingB,l:claddingBLt});
+
+  const faceOffsets=[
+    {pw:W1-0.4,pd:0.06,px:0,pz:D1/2+0.04},
+    {pw:W1-0.4,pd:0.06,px:0,pz:-D1/2-0.04},
+    {pw:0.06,pd:D1-0.4,px:W1/2+0.04,pz:0},
+    {pw:0.06,pd:D1-0.4,px:-W1/2-0.04,pz:0},
+  ];
+  const floorH=1.55, floors=32;
+  faceOffsets.forEach(f=>{
+    for(let fl=0;fl<floors;fl++){
+      const fy=3+floorH*fl+floorH/2+0.3;
+      const r=Math.random();
+      const dm=r>0.55?glassLit:r>0.25?glassDim:glassOff;
+      const lm=r>0.55?glassLitLt:r>0.25?glassDimLt:glassOffLt;
+      const mb = box(f.pw,floorH-0.2,f.pd,dm,tx+f.px,fy,f.pz);
+      groundMeshes.push({m:mb,d:dm,l:lm});
+    }
+  });
+
+  const s1y=TH+3;
+  const s1a=box(W1-1,4,D1-1,cladding,tx,s1y+2,0);
+  groundMeshes.push({m:s1a,d:cladding,l:claddingLt});
+  const sb1=new THREE.Mesh(new THREE.BoxGeometry(W2-1,4,D2-1),claddingB);
+  sb1.position.set(tx,s1y+2,0); sb1.rotation.y=Math.PI/4; scene.add(sb1);
+  groundMeshes.push({m:sb1,d:claddingB,l:claddingBLt});
+  const r1=box(W1-0.8,0.3,D1-0.8,roofM,tx,s1y+0.15,0);
+  groundMeshes.push({m:r1,d:roofM,l:roofMLt});
+
+  const s2y=s1y+4;
+  const s2a=box(W1-2.5,5,D1-2.5,cladding,tx,s2y+2.5,0);
+  groundMeshes.push({m:s2a,d:cladding,l:claddingLt});
+  const r2=box(W1-2.3,0.3,D1-2.3,roofM,tx,s2y+0.15,0);
+  groundMeshes.push({m:r2,d:roofM,l:roofMLt});
+
+  const s3y=s2y+5;
+  const s3a=box(W1-4,4,D1-4,cladding,tx,s3y+2,0);
+  groundMeshes.push({m:s3a,d:cladding,l:claddingLt});
+  const r3=box(W1-3.8,0.3,D1-3.8,roofM,tx,s3y+0.15,0);
+  groundMeshes.push({m:r3,d:roofM,l:roofMLt});
+
+  const crownBase=s3y+4;
+  const cr1=box(2.8,2,2.8,metal,tx,crownBase+1,0);
+  groundMeshes.push({m:cr1,d:metal,l:metalLt});
+  const cr2=box(2,1,2,metal,tx,crownBase+2.5,0);
+  groundMeshes.push({m:cr2,d:metal,l:metalLt});
+  const cr3=cyl(0.18,0.3,6,8,metal,tx,crownBase+6.5,0);
+  groundMeshes.push({m:cr3,d:metal,l:metalLt});
+  const cr4=cyl(0.06,0.06,3,8,metal,tx,crownBase+10.5,0);
+  groundMeshes.push({m:cr4,d:metal,l:metalLt});
+  const tipLight=new THREE.Mesh(new THREE.SphereGeometry(0.22,8,8),spireGlow);
+  tipLight.position.set(tx,crownBase+12.2,0); scene.add(tipLight);
+  spireObjs.push({m:tipLight,dMat:spireGlow,lMat:spireGlowLt});
+  const tpl=new THREE.PointLight(0xff2200,2,10);
+  tpl.position.set(tx,crownBase+12.2,0); scene.add(tpl);
+}
+
+buildTower(-5.5);
+buildTower(5.5);
+
+const bridgeY=67;
+const br1=box(11,1.6,3.8,metal,0,bridgeY,0);
+groundMeshes.push({m:br1,d:metal,l:metalLt});
+const bgl1=box(11,1.2,0.06,bridgeGlow,0,bridgeY,1.97);
+bridgeGlowObjs.push({m:bgl1,d:bridgeGlow,l:bridgeGlowLt});
+const bgl2=box(11,1.2,0.06,bridgeGlow,0,bridgeY,-1.97);
+bridgeGlowObjs.push({m:bgl2,d:bridgeGlow,l:bridgeGlowLt});
+const bfloor=box(11,0.08,3.6,dark,0,bridgeY-0.76,0);
+groundMeshes.push({m:bfloor,d:dark,l:darkLt});
+[-4,-1.5,1.5,4].forEach(sx=>{
+  const bv=box(0.18,1.4,3.6,metal,sx,bridgeY,0);
+  groundMeshes.push({m:bv,d:metal,l:metalLt});
+});
+
+const ob=bridgeY+8;
+const br2=box(11,1.2,3.2,metal,0,ob,0);
+groundMeshes.push({m:br2,d:metal,l:metalLt});
+const bgl3=box(11,0.9,0.05,bridgeGlow,0,ob,1.65);
+bridgeGlowObjs.push({m:bgl3,d:bridgeGlow,l:bridgeGlowLt});
+const bgl4=box(11,0.9,0.05,bridgeGlow,0,ob,-1.65);
+bridgeGlowObjs.push({m:bgl4,d:bridgeGlow,l:bridgeGlowLt});
+
+const ref=new THREE.Mesh(new THREE.PlaneGeometry(120,120),
+  new THREE.MeshLambertMaterial({color:0x0a0c14,transparent:true,opacity:0.6}));
+ref.rotation.x=-Math.PI/2; ref.position.y=-0.05;
+scene.add(ref);
+groundMeshes.push({m:ref,d:new THREE.MeshLambertMaterial({color:0x0a0c14,transparent:true,opacity:0.6}),
+  l:new THREE.MeshLambertMaterial({color:0x6688aa,transparent:true,opacity:0.4})});
+
+function applyMode(light){
+  groundMeshes.forEach(e=>{ e.m.material = light ? e.l : e.d; });
+  spireObjs.forEach(e=>{ e.m.material = light ? e.lMat : e.dMat; });
+  bridgeGlowObjs.forEach(e=>{ e.m.material = light ? e.l : e.d; });
+
+  skyMesh.geometry.setAttribute('color', light ? skyCAttrLight : skyCAttrDark);
+  skyMesh.geometry.attributes.color.needsUpdate = true;
+
+  starMesh.visible = !light;
+  moon.material = light ? sunMat : moonMat;
+  moon.position.set(light ? 100 : 80, light ? 160 : 120, -180);
+  moon.scale.setScalar(light ? 1.8 : 1);
+
+  ambLight.color.set(light ? 0x8899bb : 0x0a1030);
+  ambLight.intensity = light ? 2.0 : 0.8;
+  moonLight.color.set(light ? 0xfff0cc : 0x8899cc);
+  moonLight.intensity = light ? 1.8 : 0.4;
+  hemiLight.color.set(light ? 0x88aacc : 0x112244);
+  hemiLight.groundColor.set(light ? 0x6688aa : 0x001122);
+  hemiLight.intensity = light ? 1.4 : 0.5;
+
+  [pl1,pl2,pl3,pl4].forEach(l=>{ l.intensity = light ? 0.2 : 1.2; });
+  pl5.intensity = light ? 0.1 : 0.8;
+  pl6.intensity = light ? 0.1 : 0.6;
+
+  renderer.setClearColor(light ? 0xb8cfe8 : 0x060810);
+  scene.fog = light ? fogLight : fog;
+}
+
+// Orbit controls
+let isDragging=false,prevX=0,prevY=0;
+let theta=0.55,phi=0.6,radius=90;
+const target=new THREE.Vector3(0,32,0);
+function updateCam(){
+  camera.position.x=target.x+radius*Math.sin(phi)*Math.sin(theta);
+  camera.position.y=target.y+radius*Math.cos(phi);
+  camera.position.z=target.z+radius*Math.sin(phi)*Math.cos(theta);
+  camera.lookAt(target);
+}
+updateCam();
+
+canvas.addEventListener('mousedown',e=>{isDragging=true;prevX=e.clientX;prevY=e.clientY;});
+window.addEventListener('mouseup',()=>isDragging=false);
+window.addEventListener('mousemove',e=>{
+  if(!isDragging)return;
+  theta-=(e.clientX-prevX)*0.005;
+  phi=Math.max(0.08,Math.min(1.45,phi+(e.clientY-prevY)*0.005));
+  prevX=e.clientX;prevY=e.clientY;updateCam();
+});
+canvas.addEventListener('wheel',e=>{
+  radius=Math.max(20,Math.min(160,radius+e.deltaY*0.06));
+  updateCam(); e.preventDefault();
+},{passive:false});
+let lt2=[];
+canvas.addEventListener('touchstart',e=>{lt2=[...e.touches];},{passive:true});
+canvas.addEventListener('touchmove',e=>{
+  if(e.touches.length===1){
+    theta-=(e.touches[0].clientX-lt2[0].clientX)*0.007;
+    phi=Math.max(0.08,Math.min(1.45,phi+(e.touches[0].clientY-lt2[0].clientY)*0.007));
+    updateCam();
+  } lt2=[...e.touches]; e.preventDefault();
+},{passive:false});
+
+btn.addEventListener('click',()=>{
+  isLight=!isLight;
+  wrap.classList.toggle('light',isLight);
+  btn.textContent = isLight ? '🌙 DARK' : '☀ LIGHT';
+  applyMode(isLight);
+});
+
+applyMode(false);
+
+let tAnim=0;
+(function loop(){
+  requestAnimationFrame(loop);
+  tAnim+=0.016;
+  theta+=0.0007;
+  if(!isLight){
+    const blink=Math.sin(tAnim*2)>0?1.2:0.1;
+    spireObjs.forEach(s=>s.m.material.emissiveIntensity=blink);
+  }
+  updateCam();
+  renderer.render(scene,camera);
+})();
+
+window.addEventListener('resize',()=>{
+  const {w,h}=getSize();
+  renderer.setSize(w,h);
+  camera.aspect=w/h;
+  camera.updateProjectionMatrix();
+});
+</script>

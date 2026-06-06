@@ -3,43 +3,79 @@ import { useEffect, useRef, useState } from "react";
 export function CustomCursor() {
   const dot = useRef<HTMLDivElement>(null);
   const ring = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    let x = 0, y = 0, rx = 0, ry = 0;
-    const move = (e: MouseEvent) => { x = e.clientX; y = e.clientY; };
-    window.addEventListener("mousemove", move);
+
+    let mx = 0,
+      my = 0;
+    let dx = 0,
+      dy = 0;
+    let rx = 0,
+      ry = 0;
+    let isHover = false;
+
+    const onMove = (e: MouseEvent) => {
+      mx = e.clientX;
+      my = e.clientY;
+    };
+
+    const onOver = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      isHover = !!t.closest("a,button,[data-hover]");
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseover", onOver);
+
     let raf = 0;
     const loop = () => {
-      rx += (x - rx) * 0.18;
-      ry += (y - ry) * 0.18;
-      if (dot.current) dot.current.style.transform = `translate3d(${x - 4}px, ${y - 4}px, 0)`;
-      if (ring.current) ring.current.style.transform = `translate3d(${rx - 18}px, ${ry - 18}px, 0)`;
+      // dot: fast lerp (0.35) — tracks closely but still smooth
+      dx += (mx - dx) * 0.35;
+      dy += (my - dy) * 0.35;
+
+      // ring: slow lerp (0.1) — trails behind for a fluid feel
+      rx += (mx - rx) * 0.1;
+      ry += (my - ry) * 0.1;
+
+      const dotSize = 4;
+      const ringSize = isHover ? 40 : 20;
+
+      if (dot.current) {
+        dot.current.style.transform = `translate3d(${dx - dotSize / 2}px, ${dy - dotSize / 2}px, 0)`;
+      }
+
+      if (ring.current) {
+        ring.current.style.transform = `translate3d(${rx - ringSize / 2}px, ${ry - ringSize / 2}px, 0)`;
+        ring.current.style.width = `${ringSize * 1.8}px`;
+        ring.current.style.height = `${ringSize * 1.8}px`;
+      }
+
       raf = requestAnimationFrame(loop);
     };
+
     raf = requestAnimationFrame(loop);
-    const over = (e: MouseEvent) => {
-      const t = e.target as HTMLElement;
-      setHover(!!t.closest("a,button,[data-hover]"));
-    };
-    window.addEventListener("mouseover", over);
+
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("mousemove", move);
-      window.removeEventListener("mouseover", over);
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseover", onOver);
     };
   }, []);
 
   if (!mounted) return null;
+
   return (
     <>
-      <div ref={dot} className="pointer-events-none fixed left-0 top-0 z-[9999] h-2 w-2 rounded-full bg-primary mix-blend-difference hidden md:block" />
+      <div
+        ref={dot}
+        className="pointer-events-none fixed left-0 top-0 z-[9999] h-2 w-2 rounded-full bg-primary mix-blend-difference hidden md:block"
+      />
       <div
         ref={ring}
-        className="pointer-events-none fixed left-0 top-0 z-[9999] h-9 w-9 rounded-full border border-primary/70 transition-transform duration-200 mix-blend-difference hidden md:block"
-        style={{ scale: hover ? 1.8 : 1 } as React.CSSProperties}
+        className="pointer-events-none fixed left-0 top-0 z-[9999] rounded-full border border-primary/70 mix-blend-difference hidden md:block"
+        style={{ width: "36px", height: "36px" }}
       />
     </>
   );

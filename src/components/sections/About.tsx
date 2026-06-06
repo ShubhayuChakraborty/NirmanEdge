@@ -1,7 +1,4 @@
-import { lazy, Suspense } from "react";
 import { Reveal, Counter } from "@/components/fx/Reveal";
-
-const RotatingBuilding = lazy(() => import("@/components/3d/RotatingBuilding"));
 
 const stats = [
   { v: 500, s: "+", label: "Landmark Projects" },
@@ -47,11 +44,14 @@ export function About() {
           </div>
         </div>
         <Reveal>
-          <div className="aspect-square rounded-3xl glass overflow-hidden relative">
-            <Suspense fallback={<div className="h-full w-full bg-black" />}>
-              <RotatingBuilding />
-            </Suspense>
-            <div className="absolute bottom-4 left-4 text-[10px] uppercase tracking-[0.3em] text-muted-foreground">
+          <div className="aspect-square rounded-3xl overflow-hidden relative border border-white/10">
+            <img
+              src="https://plus.unsplash.com/premium_photo-1694475386078-af18b0f90223?q=80&w=687&auto=format&fit=crop"
+              alt="NirmanEdge Architecture"
+              className="w-full h-full object-cover"
+            />
+            <div className="absolute inset-0 bg-linear-to-t from-black/60 via-transparent to-transparent" />
+            <div className="absolute bottom-4 left-4 text-[10px] uppercase tracking-[0.3em] text-white/60 pointer-events-none">
               ◉ Live Digital Twin
             </div>
           </div>
